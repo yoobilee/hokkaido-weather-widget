@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hokkaido Weather Dashboard</title>
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    /* 노션 라이트 모드 (기본) */
+    :root {
+      --bg-color: transparent;
+      --card-bg: #ffffff;
+      --border: 1px solid rgba(0, 0, 0, 0.05);
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+      --text-main: #111827;
+      --text-sub: #6b7280;
+      --text-tiny: #9ca3af;
+      --high-temp: #ef4444;
+      --low-temp: #3b82f6;
+      --divider: #e5e7eb;
+    }
+
+    /* 노션 다크 모드 자동 대응 */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --card-bg: #1f1f1f;
+        --border: 1px solid rgba(255, 255, 255, 0.05);
+        --shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        --text-main: #f9fafb;
+        --text-sub: #9ca3af;
+        --text-tiny: #6b7280;
+        --divider: #374151;
+      }
+    }
+
+    /* 전체 폰트 및 뼈대 */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", Roboto, "Segoe UI", sans-serif;
+      margin: 0; padding: 16px;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      box-sizing: border-box;
+    }
+
+    .dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* 도시별 카드 디자인 */
+    .city-card {
+      background: var(--card-bg);
+      border: var(--border);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s ease;
+    }
+    
+    .city-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .city-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      letter-spacing: -0.5px;
+    }
+
+    .city-header i {
+      color: #ef4444;
+      font-size: 22px;
+    }
+
+    /* 날씨 가로 배열 리스트 */
+    .forecast-list {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    /* 개별 요일 아이템 */
+    .day-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .date-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-sub);
+    }
+
+    .today-badge {
+      color: #3b82f6;
+      font-weight: 700;
+    }
+
+    .weather-icon {
+      font-size: 38px;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.1));
+    }
+
+    .weather-desc {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-main);
+      text-align: center;
+      line-height: 1.3;
+      height: 32px; /* 텍스트가 두 줄이 되어도 틀어지지 않게 고정 */
+      display: flex;
+      align-items: center;
+      word-break: keep-all;
+    }
+
+    .temp-box {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .high { color: var(--high-temp); }
+    .low { color: var(--low-temp); }
+    .temp-divider { width: 1px; height: 12px; background: var(--divider); }
+
+    .loading {
+      text-align: center; padding: 40px; color: var(--text-sub);
+      font-size: 15px; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 12px;
+    }
+    .loading i { font-size: 32px; animation: spin 2s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="dashboard" id="app">
+    <div class="loading">
+      <i class="ph-duotone ph-spinner-gap"></i>
+      홋카이도 기상청 데이터를 동기화 중입니다...
+    </div>
+  </div>
+
+  <script>
+    // 날씨 텍스트를 분석해서 프리미엄 벡터 아이콘과 색상을 매칭해주는 함수
+    function getPremiumIcon(desc) {
+      if (desc.includes('뇌우') || desc.includes('폭풍')) return { class: 'ph-duotone ph-cloud-lightning', color: '#8b5cf6' };
+      if (desc.includes('눈보라') || desc.includes('대설')) return { class: 'ph-duotone ph-cloud-snow', color: '#93c5fd' };
+      if (desc.includes('진눈깨비')) return { class: 'ph-duotone ph-cloud-rain', color: '#60a5fa' };
+      if (desc.includes('눈')) return { class: 'ph-duotone ph-snowflake', color: '#7dd3fc' };
+      if (desc.includes('비')) return { class: 'ph-duotone ph-cloud-rain', color: '#3b82f6' };
+      if (desc.includes('흐림') && desc.includes('맑음')) return { class: 'ph-duotone ph-cloud-sun', color: '#94a3b8' };
+      if (desc.includes('흐림')) return { class: 'ph-duotone ph-cloud', color: '#9ca3af' };
+      if (desc.includes('맑음')) return { class: 'ph-duotone ph-sun', color: '#f59e0b' };
+      if (desc.includes('안개')) return { class: 'ph-duotone ph-cloud-fog', color: '#cbd5e1' };
+      return { class: 'ph-duotone ph-cloud-sun', color: '#f59e0b' }; // 기본값
+    }
+
+    // 날짜 자동 계산
+    function getDateString(offset) {
+      const date = new Date();
+      date.setDate(date.getDate() + offset);
+      const days = ['일', '월', '화', '수', '목', '금', '토'];
+      if (offset === 0) return '<span class="today-badge">오늘</span>';
+      if (offset === 1) return '내일';
+      return `${date.getDate()}일(${days[date.getDay()]})`;
+    }
+
+    async function renderDashboard() {
+      const app = document.getElementById('app');
+      try {
+        const res = await fetch('/.netlify/functions/getWeather');
+        const data = await res.json();
+        
+        app.innerHTML = ''; 
+        
+        data.forEach(city => {
+          if (city.forecast[0].weather === '데이터 오류') {
+             app.innerHTML += `<div class="city-card"><div class="city-header"><i class="ph-fill ph-warning-circle"></i> ${city.name}</div><div style="color:var(--text-sub);">데이터를 불러오지 못했습니다.</div></div>`;
+             return;
+          }
+
+          let forecastHTML = '';
+          city.forecast.forEach(day => {
+            const iconData = getPremiumIcon(day.weather);
+            forecastHTML += `
+              <div class="day-item">
+                <div class="date-label">${getDateString(day.dayIndex)}</div>
+                <i class="${iconData.class} weather-icon" style="color: ${iconData.color};"></i>
+                <div class="weather-desc">${day.weather}</div>
+                <div class="temp-box">
+                  <span class="high">${day.high}°</span>
+                  <div class="temp-divider"></div>
+                  <span class="low">${day.low}°</span>
+                </div>
+              </div>
+            `;
+          });
+
+          app.innerHTML += `
+            <div class="city-card">
+              <div class="city-header"><i class="ph-fill ph-map-pin"></i> ${city.name}</div>
+              <div class="forecast-list">${forecastHTML}</div>
+            </div>
+          `;
+        });
+      } catch (err) {
+        app.innerHTML = '<div class="loading"><i class="ph-duotone ph-warning-circle" style="color:#ef4444;"></i>네트워크 오류가 발생했습니다.</div>';
+      }
+    }
+    renderDashboard();
+  </script>
+</body>
+</html>
